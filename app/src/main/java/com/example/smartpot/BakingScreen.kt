@@ -7,6 +7,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.SpeechRecognizer.RESULTS_RECOGNITION
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,12 +16,15 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.util.*
+
+
 
 @Composable
 fun BakingScreen(
@@ -47,7 +51,7 @@ fun BakingScreen(
   var pregunta by rememberSaveable { mutableStateOf("") }
 
   var humedad by rememberSaveable { mutableStateOf(80) }
-  var luz by rememberSaveable { mutableStateOf(15000) }
+  var luz by rememberSaveable { mutableStateOf(9000) }
   var temperatura by rememberSaveable { mutableStateOf(25) }
   var etapa by rememberSaveable { mutableStateOf("Desarrollo") }
   var isHumedadEnabled by rememberSaveable { mutableStateOf(true) }
@@ -63,9 +67,8 @@ fun BakingScreen(
     if (isLuzEnabled) appendLine("- Luz: $luz lumens")
     if (isTemperaturaEnabled) appendLine("- Temperatura: $temperatura°C")
     appendLine("- Etapa: $etapa")
-    if (pregunta.isNotEmpty()) appendLine("Además, responde a la siguiente pregunta: $pregunta")
-    else appendLine("Además, con base en estos datos, responde cómo te sientes y qué necesitas.")
-    appendLine("Responde siempre con una frase corta, divertida y juguetona, como si fueras una hierbabuena feliz y bromista.")
+    appendLine("Responde siempre con una frase corta, divertida y juguetona, como si fueras una hierbabuena feliz y bromista, pero recuerda comentar si alguna de tus variables esta mal.")
+    appendLine("El usuario dijo:")
   }
 
   // Setup SpeechRecognizer
@@ -85,20 +88,25 @@ fun BakingScreen(
 
   // Método para manejar el texto recogido y enviar el texto a la función que hace la solicitud al backend
   val sendTextToBackend = {
-    // Enviar el texto recogido en 'pregunta' al backend o al flujo correspondiente
+    // Reiniciamos la bandera para que el TTS se active cada vez que se envíe un nuevo prompt
+    isTextSpoken = false
+    print("Texto reconocido: $pregunta")
     if (pregunta.isNotEmpty()) {
-      bakingViewModel.sendPrompt(null, prePrompt)
+      bakingViewModel.sendPrompt(null, prePrompt.plus(pregunta))
     } else {
       Toast.makeText(context, "No se ha reconocido texto", Toast.LENGTH_SHORT).show()
     }
   }
 
+
   // Layout principal
   Column(
     modifier = Modifier.fillMaxSize()
+      .background(Color(0xFF9AF59D))
+
   ) {
     Text(
-      text = "SmartPot",
+      text = "Gaia",
       style = MaterialTheme.typography.titleLarge,
       modifier = Modifier.padding(16.dp)
     )
@@ -122,15 +130,28 @@ fun BakingScreen(
             onCheckedChange = { isHumedadEnabled = it },
             modifier = Modifier.align(Alignment.CenterVertically)
           )
+
+          var humedadInput by rememberSaveable { mutableStateOf(humedad.toString()) }
+
           if (isHumedadEnabled) {
             TextField(
-              value = humedad.toString(),
-              onValueChange = { humedad = it.toIntOrNull() ?: humedad },
+              value = humedadInput,
+              onValueChange = { input ->
+                humedadInput = input
+                // Actualiza 'humedad' solo si se ingresa un número válido.
+                if (input.isNotBlank()) {
+                  input.toIntOrNull()?.let {
+                    humedad = it
+                  }
+                }
+              },
               label = { Text("Humedad (%)") },
               modifier = Modifier.fillMaxWidth()
             )
           }
         }
+
+        var luzInput by rememberSaveable { mutableStateOf(luz.toString()) }
 
         Row(modifier = Modifier.padding(top = 8.dp)) {
           Text("Luz", modifier = Modifier.align(Alignment.CenterVertically))
@@ -141,13 +162,24 @@ fun BakingScreen(
           )
           if (isLuzEnabled) {
             TextField(
-              value = luz.toString(),
-              onValueChange = { luz = it.toIntOrNull() ?: luz },
+              value = luzInput,
+              onValueChange = { input ->
+                luzInput = input
+                // Solo se actualiza el valor numérico si la cadena no está vacía y es convertible
+                if (input.isNotBlank()) {
+                  input.toIntOrNull()?.let { parsedValue ->
+                    luz = parsedValue
+                  }
+                }
+              },
               label = { Text("Luz (lumens)") },
               modifier = Modifier.fillMaxWidth()
             )
           }
         }
+
+        // Variable para almacenar la entrada textual de "temperatura"
+        var temperaturaInput by rememberSaveable { mutableStateOf(temperatura.toString()) }
 
         Row(modifier = Modifier.padding(top = 8.dp)) {
           Text("Temperatura", modifier = Modifier.align(Alignment.CenterVertically))
@@ -158,8 +190,16 @@ fun BakingScreen(
           )
           if (isTemperaturaEnabled) {
             TextField(
-              value = temperatura.toString(),
-              onValueChange = { temperatura = it.toIntOrNull() ?: temperatura },
+              value = temperaturaInput,
+              onValueChange = { input ->
+                temperaturaInput = input
+                // Actualiza el valor numérico solo si el input no está vacío
+                if (input.isNotBlank()) {
+                  input.toIntOrNull()?.let { parsedValue ->
+                    temperatura = parsedValue
+                  }
+                }
+              },
               label = { Text("Temperatura (°C)") },
               modifier = Modifier.fillMaxWidth()
             )
@@ -230,7 +270,7 @@ fun BakingScreen(
       Text(
         text = result,
         textAlign = TextAlign.Start,
-        color = textColor,
+        color = Color(0xFF000000),
         modifier = Modifier
           .align(Alignment.CenterHorizontally)
           .padding(16.dp)
@@ -244,11 +284,8 @@ fun BakingScreen(
   speechRecognizer.setRecognitionListener(object : android.speech.RecognitionListener {
     override fun onResults(results: Bundle?) {
       val data = results?.getStringArrayList(RESULTS_RECOGNITION)
-      if (data != null && data.isNotEmpty()) {
-        pregunta = data[0] // Recibir la pregunta y actualizar el estado
-        sendTextToBackend() // Enviar el texto recibido a la función de backend
-        isTextSpoken = false // Reiniciar la bandera cuando el texto sea actualizado
-      }
+      pregunta = data?.getOrNull(0) ?: ""
+      sendTextToBackend()
     }
 
     override fun onError(error: Int) {

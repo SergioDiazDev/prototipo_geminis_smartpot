@@ -53,6 +53,7 @@ class SpeakResponse(context: Context, private val onReady: (() -> Unit)? = null)
     }
 
     fun speak(text: String) {
+        print(text)
         if (isInitialized) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
         } else {
@@ -64,5 +65,6 @@ class SpeakResponse(context: Context, private val onReady: (() -> Unit)? = null)
     fun shutdown() {
         tts?.stop()
         tts?.shutdown()
+
     }
 }
